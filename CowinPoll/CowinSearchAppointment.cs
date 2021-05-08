@@ -1,66 +1,95 @@
 using CowinPoll.Models;
 using CowinPoll.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 
 namespace CowinPoll
 {
     public static class CowinSearchAppointment
     {
         static int updateId = 0;
-
         [FunctionName("CowinSearchAppointment")]
-        public static void Run([TimerTrigger("0 */1 * * * *")] TimerInfo myTimer, ILogger log)
+        public static async Task<IActionResult> RunAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "CowinSearch/{token}")] HttpRequest request, string token, ILogger log)
         {
             log.LogInformation($"Function executed at: {DateTime.Now}");
+            bool isPin = false;
 
             var bot = new TelegramBotClient(GetEnvironmentVariable("BotToken"));
-            var getUpdatedResponse = bot.GetUpdatesAsync(updateId);
-            getUpdatedResponse.Wait();
-            var updates = getUpdatedResponse.Result;
-            updates.ToList().ForEach(q =>
+
+            var body = await request.ReadAsStringAsync();
+            var update = JsonConvert.DeserializeObject<Update>(body);
+
+            updateId = update.Id + 1;
+            if (update.Message != null)
             {
-                updateId = q.Id + 1;
-                if (q.Message != null)
+                await bot.SendChatActionAsync(update.Message.Chat.Id, Telegram.Bot.Types.Enums.ChatAction.Typing);
+
+                var chatMessage = update.Message.Text;
+                log.LogInformation($"Got message: " + chatMessage);
+                if (chatMessage.StartsWith("/dist") || chatMessage.StartsWith("/pin"))
                 {
-                    bot.SendChatActionAsync(q.Message.Chat.Id, Telegram.Bot.Types.Enums.ChatAction.Typing);
-                    var chatMessage = q.Message.Text;
-                    log.LogInformation($"Got message: " + chatMessage);
-                    if (chatMessage.StartsWith("/search"))
+                    if (chatMessage.StartsWith("/pin"))
                     {
-                        chatMessage = chatMessage.Replace("/search", "").Trim();
-                        var splits = chatMessage.Split(',', StringSplitOptions.RemoveEmptyEntries);
-
-                        if (splits.Length == 0) bot.SendTextMessageAsync(q.Message.Chat.Id, $"Sendformat /search<PINCODE>,<dd-mm-yyyy>");
-                        else
-                        {
-                            var pincode = splits.First();
-                            var date = DateTime.Now.ToString("dd-MM-yyyy");
-                            if (splits.Length > 1)
-                                date = splits.Last();
-
-                            var appointmentResponse = new CowinService().GetAppointment(chatMessage, date);
-                            if (appointmentResponse.Success)
-                            {
-                                var responseText = GenerateResponseMessage(appointmentResponse.Content, chatMessage);
-                                bot.SendTextMessageAsync(q.Message.Chat.Id, responseText, Telegram.Bot.Types.Enums.ParseMode.Markdown);
-                            }
-                            else
-                            {
-                                bot.SendTextMessageAsync(q.Message.Chat.Id, $"Failed getting data from COWIN: {appointmentResponse.ErrorMessage}");
-                            }
-                        }
+                        isPin = true;
+                        chatMessage = chatMessage.Replace("/pin", "").Trim();
                     }
                     else
+                        chatMessage = chatMessage.Replace("/dist", "").Trim();
+
+                    var splits = chatMessage.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                    if (splits.Length == 0) await bot.SendTextMessageAsync(update.Message.Chat.Id, $"Sendformat /dist<DISTRICTCODE> or /pin<PINCODE>");
+                    else
                     {
-                        bot.SendTextMessageAsync(q.Message.Chat.Id, $"Sendformat /search<PINCODE>,<dd-mm-yyyy>");
+                        Response<Appointment> appointmentResponse;
+                        var code = splits.First();
+                        var date = DateTime.Now.ToString("dd-MM-yyyy");
+                        if (isPin)
+                            appointmentResponse = new CowinService().GetAppointmentByPin(code, date);
+                        else
+                            appointmentResponse = new CowinService().GetAppointmentByDistrict(code, date);
+
+                        if (appointmentResponse.Success)
+                        {
+                            var responseText = GenerateResponseMessage(appointmentResponse.Content, chatMessage);
+                            if (responseText.Length > 4096)
+                            {
+                                var chunk = 0;
+                                for (int i = 0; i < responseText.Length; i += 4096)
+                                {
+                                    await bot.SendTextMessageAsync(update.Message.Chat.Id, responseText.Substring(i, 4096));
+                                    chunk++;
+                                    if (chunk > 5)
+                                        return new OkResult();
+                                }
+                                return new OkResult();
+                            }
+                            await bot.SendTextMessageAsync(update.Message.Chat.Id, responseText, Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                            return new OkResult();
+                        }
+                        else
+                        {
+                            await bot.SendTextMessageAsync(update.Message.Chat.Id, $"Sorry! failed getting data from COWIN: {appointmentResponse.ErrorMessage}");
+                            return new OkResult();
+                        }
                     }
                 }
-            });
+                else
+                {
+                    await bot.SendTextMessageAsync(update.Message.Chat.Id, $"Sendformat /dist<DISTRICTCODE> or /pin<PINCODE>");
+                    return new OkResult();
+                }
+            }
+            return new OkResult();
         }
 
         private static string GetEnvironmentVariable(string name)
@@ -80,7 +109,7 @@ namespace CowinPoll
                 {
                     sb.AppendLine($"- *Date*:{session.Date}, *Available*:{session.AvailableCapacity}, *Age*: {session.MinAgeLimit}");
                 }
-                sb.AppendLine("-----------------------------------");
+                sb.AppendLine(" ");
             }
 
             return sb.ToString();
