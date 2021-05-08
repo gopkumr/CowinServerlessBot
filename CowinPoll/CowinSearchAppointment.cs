@@ -19,7 +19,7 @@ namespace CowinPoll
     {
         static int updateId = 0;
         [FunctionName("CowinSearchAppointment")]
-        public static async Task<IActionResult> RunAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "CowinSearch/{token}")] HttpRequest request, string token, ILogger log)
+        public static async Task<IActionResult> RunAsync([HttpTrigger(AuthorizationLevel.Function, "post", Route = "CowinSearch")] HttpRequest request, ILogger log)
         {
             log.LogInformation($"Function executed at: {DateTime.Now}");
             bool isPin = false;
