@@ -60,7 +60,7 @@ namespace CowinPoll
 
                         if (appointmentResponse.Success)
                         {
-                            var responseText = GenerateResponseMessage(appointmentResponse.Content, chatMessage);
+                            var responseText = appointmentResponse.Content.GenerateResponseMessage(chatMessage);
                             if (responseText.Length > 4096)
                             {
                                 var chunk = 0;
@@ -97,23 +97,7 @@ namespace CowinPoll
             return System.Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Process);
         }
 
-        private static string GenerateResponseMessage(Appointment appointmentData, string pincode)
-        {
-            var sb = new StringBuilder();
-            if (appointmentData == null || appointmentData.Centers == null || appointmentData.Centers.Length == 0)
-                sb.AppendLine($"*No appointment data available for pincode {pincode}*");
-            foreach (var center in appointmentData.Centers)
-            {
-                sb.AppendLine($"*Name*:{center.Name}, *Paid*:{center.FeeType}");
-                foreach (var session in center.Sessions)
-                {
-                    sb.AppendLine($"- *Date*:{session.Date}, *Available*:{session.AvailableCapacity}, *Age*: {session.MinAgeLimit}");
-                }
-                sb.AppendLine(" ");
-            }
-
-            return sb.ToString();
-        }
+       
     }
 
 
