@@ -57,9 +57,8 @@ namespace CowinPoll.Server
             var latestStopMessage = updates.Where(q => q.Message != null && q.Message.Text != null && q.Message.Text.StartsWith("/stop"))
                                             .OrderBy(r => r.Id)
                                             .FirstOrDefault();
-
-            if (latestStopMessage.Id > latestStartMessage.Id) { appsettings.SearchDistrict = Enumerable.Empty<string>().ToArray(); appsettings.SearchPincode = Enumerable.Empty<string>().ToArray(); }
-            else if (latestStartMessage != null)
+            
+             if (latestStartMessage != null)
             {
                 appsettings.StartChatId = latestStartMessage.Message.Chat.Id;
                 appsettings.LatestOffsetId = latestStartMessage.Id + 1;
@@ -91,6 +90,14 @@ namespace CowinPoll.Server
                     appsettings.SearchDistrict = dists.ToArray();
                     bot.SendTextMessageAsync(appsettings.StartChatId, $"Bot will search for {string.Join(",", appsettings.SearchDistrict)}, {string.Join(",", appsettings.SearchPincode)}");
                 }
+            }
+
+            if (latestStopMessage != null && (latestStopMessage.Id >= appsettings.LatestOffsetId)) {
+                appsettings.StartChatId = latestStopMessage.Message.Chat.Id;
+                appsettings.LatestOffsetId = latestStopMessage.Id + 1;
+                bot.SendTextMessageAsync(appsettings.StartChatId, $"Bot will stop search");
+                appsettings.SearchDistrict = Enumerable.Empty<string>().ToArray(); appsettings.SearchPincode = Enumerable.Empty<string>().ToArray();
+                Console.WriteLine($"{DateTime.Now}: Recieved request to stop search");
             }
 
             if ((appsettings.SearchPincode.Length > 0 || appsettings.SearchDistrict.Length > 0) && appsettings.StartChatId > 0)
