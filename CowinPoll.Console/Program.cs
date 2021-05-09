@@ -45,7 +45,7 @@ namespace CowinPoll.Server
 
         private static void CowinPoll(object sender, ElapsedEventArgs e)
         {
-            var bot = new TelegramBotClient("1880774312:AAFN7eWptmcqAN1X29kiJpUQqhI9HqcMFdg");
+            var bot = new TelegramBotClient("");
             var updateTask = bot.GetUpdatesAsync(offset: appsettings.LatestOffsetId);
             updateTask.Wait();
             var updates = updateTask.Result;
