@@ -20,16 +20,15 @@ namespace CowinPoll.Server
                 appointmentResponse = new CowinService().GetAppointmentByPin(pin, date);
                 if (appointmentResponse.Success)
                 {
-                    var availableCenters = appointmentResponse.Content.Centers.ToList().Where(q => q.Sessions.Any(q => q.AvailableCapacity > 0)).ToList();
+                    var availableCenters = appointmentResponse.Content.centers.ToList().Where(q => q.sessions.Any(q => q.available_capacity > 0 && q.min_age_limit == 18)).ToList();
                     foreach (var center in availableCenters)
                     {
-                        center.Sessions = center.Sessions.Where(q => q.AvailableCapacity > 0).ToArray();
+                        center.sessions = center.sessions.Where(q => q.available_capacity > 0 && q.min_age_limit == 18).ToArray();
                     }
-                    var responseText = (new Appointment() { Centers = availableCenters.ToArray() }).GenerateResponseMessage(pin);
-                    responses.Add(pin, responseText);
+                    var responseText = (new Appointment() { centers = availableCenters.ToArray() }).GenerateResponseMessage();
+                    if (!string.IsNullOrEmpty(responseText))
+                        responses.Add(pin, responseText);
                 }
-                else
-                    responses.Add(pin, appointmentResponse.ErrorMessage);
             }
 
             foreach (var dist in districts)
@@ -38,17 +37,57 @@ namespace CowinPoll.Server
                 appointmentResponse = new CowinService().GetAppointmentByDistrict(dist, date);
                 if (appointmentResponse.Success)
                 {
-                    var availableCenters = appointmentResponse.Content.Centers.ToList().Where(q => q.Sessions.Any(q => q.AvailableCapacity > 0)).ToList();
+                    var availableCenters = appointmentResponse.Content.centers.ToList().Where(q => q.sessions.Any(q => q.available_capacity_dose1>0 && q.available_capacity > 0 && q.min_age_limit == 18)).ToList();
                     foreach (var center in availableCenters)
                     {
-                        center.Sessions = center.Sessions.Where(q => q.AvailableCapacity > 0).ToArray();
+                        center.sessions = center.sessions.Where(q => q.available_capacity_dose1>0 && q.available_capacity > 0 && q.min_age_limit == 18).ToArray();
                     }
-                    var responseText = (new Appointment() { Centers = availableCenters.ToArray() }).GenerateResponseMessage(dist);
-                    responses.Add(dist, responseText);
+                    var responseText = (new Appointment() { centers = availableCenters.ToArray() }).GenerateResponseMessage();
+                    if (!string.IsNullOrEmpty(responseText))
+                        responses.Add(dist, responseText);
                 }
-                else
-                    responses.Add(dist, appointmentResponse.ErrorMessage);
             }
+
+            return responses;
+        }
+
+        public static IEnumerable<string> GetCowinResponsesFor21Days(string[] pincodes, string[] districts)
+        {
+            var responses = new List<string>();
+            if (pincodes.Any())
+            {
+                var appointsByPin = new CowinService().GetAppointmentByPinFor21Days(pincodes.Distinct());
+                if (appointsByPin.Success)
+                {
+                    var responsePin = AppointmentsToText(appointsByPin);
+                    responses.AddRange(responsePin);
+                }
+            }
+
+            if (districts.Any())
+            {
+                var appointsByDistrict = new CowinService().GetAppointmentByDistrictFor21Days(districts.Distinct());
+                if (appointsByDistrict.Success)
+                {
+                    var responseDist = AppointmentsToText(appointsByDistrict);
+                    responses.AddRange(responseDist);
+                }
+            }
+            return responses;
+        }
+
+        private static IEnumerable<string> AppointmentsToText(Response<IEnumerable<Appointment>> appointments)
+        {
+            List<string> responses = new List<string>();
+            var availableCenters = appointments.Content.SelectMany(q => q.centers).Where(q => q.sessions.Any(q => q.available_capacity_dose1 > 0 && q.available_capacity > 0 && q.min_age_limit == 18)).ToList();
+            foreach (var center in availableCenters)
+            {
+                center.sessions = center.sessions.Where(q => q.available_capacity_dose1 > 0 && q.available_capacity > 0 && q.available_capacity == 18).ToArray();
+            }
+            var responseText = (new Appointment() { centers = availableCenters.ToArray() }).GenerateResponseMessage();
+
+            if (!string.IsNullOrEmpty(responseText))
+                responses.Add(responseText);
 
             return responses;
         }

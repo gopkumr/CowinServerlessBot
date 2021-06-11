@@ -60,7 +60,7 @@ namespace CowinPoll
 
                         if (appointmentResponse.Success)
                         {
-                            var responseText = appointmentResponse.Content.GenerateResponseMessage(chatMessage);
+                            var responseText = appointmentResponse.Content.GenerateResponseMessage();
                             if (responseText.Length > 4096)
                             {
                                 var chunk = 0;

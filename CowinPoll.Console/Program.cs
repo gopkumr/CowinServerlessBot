@@ -7,6 +7,8 @@ using Telegram.Bot;
 using System.Linq;
 using CowinPoll.Services;
 using System.Collections.Generic;
+using Telegram.Bot.Types.Enums;
+using System.Threading.Tasks;
 
 namespace CowinPoll.Server
 {
@@ -14,12 +16,12 @@ namespace CowinPoll.Server
     {
         static AppSettings appsettings;
         static DateTime LastCowinRun = DateTime.MinValue;
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
             appsettings = SettingsFileManager.ReadSettingsFile();
 
-            var timer = new Timer(1 * 60000);
+            var timer = new Timer(appsettings.IntervalMinutes * 60000);
             timer.Elapsed += CowinPoll;
             timer.Enabled = true;
             timer.Start();
@@ -37,7 +39,7 @@ namespace CowinPoll.Server
             }
 
         }
-       
+
         private static void CurrentDomain_ProcessExit(object sender, EventArgs e)
         {
             SettingsFileManager.WriteSettingsFile(appsettings);
@@ -45,24 +47,24 @@ namespace CowinPoll.Server
 
         private static void CowinPoll(object sender, ElapsedEventArgs e)
         {
-            var bot = new TelegramBotClient("");
-            var updateTask = bot.GetUpdatesAsync(offset: appsettings.LatestOffsetId);
+            var bot = new TelegramBotClient("1880774312:AAFN7eWptmcqAN1X29kiJpUQqhI9HqcMFdg");
+            var updateTask = bot.GetUpdatesAsync(offset: appsettings.LatestOffsetId, allowedUpdates: new List<UpdateType>() { UpdateType.Message });
             updateTask.Wait();
             var updates = updateTask.Result;
 
             var latestStartMessage = updates.Where(q => q.Message != null && q.Message.Text != null && q.Message.Text.StartsWith("/start"))
-                                            .OrderBy(r => r.Id)
+                                            .OrderByDescending(r => r.Id)
                                             .FirstOrDefault();
 
             var latestStopMessage = updates.Where(q => q.Message != null && q.Message.Text != null && q.Message.Text.StartsWith("/stop"))
-                                            .OrderBy(r => r.Id)
+                                            .OrderByDescending(r => r.Id)
                                             .FirstOrDefault();
             
              if (latestStartMessage != null)
             {
                 appsettings.StartChatId = latestStartMessage.Message.Chat.Id;
                 appsettings.LatestOffsetId = latestStartMessage.Id + 1;
-                var searchParam = latestStartMessage.Message.Text.Replace("/start", "");
+                var searchParam = latestStartMessage.Message.Text.Replace("/start", "").Replace("@GopCovSearch_bot", "");
                 var searchArray = searchParam.Split(",", StringSplitOptions.RemoveEmptyEntries);
                 Console.WriteLine($"{DateTime.Now}: Recieved request to search for {string.Join(",", searchArray)}");
 
@@ -100,38 +102,37 @@ namespace CowinPoll.Server
                 Console.WriteLine($"{DateTime.Now}: Recieved request to stop search");
             }
 
-            if ((appsettings.SearchPincode.Length > 0 || appsettings.SearchDistrict.Length > 0) && appsettings.StartChatId > 0)
+            if ((appsettings.SearchPincode.Length > 0 || appsettings.SearchDistrict.Length > 0) && Math.Abs(appsettings.StartChatId) > 0)
             {
-                if (LastCowinRun == DateTime.MinValue || DateTime.Now.Subtract(LastCowinRun).Minutes >= appsettings.IntervalMinutes)
+                Console.WriteLine($"Bot will search for {string.Join(",", appsettings.SearchDistrict)}, {string.Join(",", appsettings.SearchPincode)}");
                 {
                     bot.SendChatActionAsync(appsettings.StartChatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
-                    var appointmentResponse = CowinTrigger.GetCowinResponses(appsettings.SearchPincode, appsettings.SearchDistrict);
+                    var appointmentResponse = CowinTrigger.GetCowinResponsesFor21Days(appsettings.SearchPincode, appsettings.SearchDistrict);
                    
-                    if (appointmentResponse.Keys.Count > 0)
+                    if (appointmentResponse.Count() > 0)
                     {
-                        Console.WriteLine($"{DateTime.Now}: Responding to search for {string.Join(",", appointmentResponse.Keys)}");
-                        foreach (var key in appointmentResponse.Keys)
+                        Console.WriteLine($"{DateTime.Now}: Responding to search for {string.Join(",", appsettings.SearchPincode)},{string.Join(",", appsettings.SearchDistrict)}");
+                        foreach (var val in appointmentResponse)
                         {
-                            var responseText = appointmentResponse[key];
+                            var responseText = val;
                             if (responseText.Length > 4090)
                             {
                                 var chunk = 0;
                                 for (int i = 0; i < responseText.Length; i += 4090)
                                 {
-                                    bot.SendTextMessageAsync(appsettings.StartChatId, $"{key} {responseText.Substring(i, 4090)}");
+                                    bot.SendTextMessageAsync(appsettings.StartChatId, $"{responseText.Substring(i, 4090)}", Telegram.Bot.Types.Enums.ParseMode.Markdown);
                                     chunk++;
                                     if (chunk > 5)
                                         break;
                                 }
                             }
-                            bot.SendTextMessageAsync(appsettings.StartChatId,$"{key} {responseText}", Telegram.Bot.Types.Enums.ParseMode.Markdown);
+                            bot.SendTextMessageAsync(appsettings.StartChatId,$"{responseText}", Telegram.Bot.Types.Enums.ParseMode.Markdown);
                         }
                         LastCowinRun = DateTime.Now;
                     }
                     else
                     {
                         Console.WriteLine($"{DateTime.Now}: Failed to get data from COWIN.");
-                        bot.SendTextMessageAsync(appsettings.StartChatId, $"Sorry! failed getting data from COWIN");
                     }
                 }
             }

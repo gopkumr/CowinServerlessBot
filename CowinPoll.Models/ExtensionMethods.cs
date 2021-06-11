@@ -6,17 +6,17 @@ namespace CowinPoll.Models
 {
     public static class ExtensionMethods
     {
-        public static string GenerateResponseMessage(this Appointment appointmentData, string code)
+        public static string GenerateResponseMessage(this Appointment appointmentData)
         {
             var sb = new StringBuilder();
-            if (appointmentData == null || appointmentData.Centers == null || appointmentData.Centers.Length == 0)
-                sb.AppendLine($"*No appointment data available for  {code}*");
-            foreach (var center in appointmentData.Centers)
+            if (appointmentData == null || appointmentData.centers == null || appointmentData.centers.Length == 0)
+                return null;
+            foreach (var center in appointmentData.centers)
             {
-                sb.AppendLine($"*Name*:{center.Name}, *Paid*:{center.FeeType}");
-                foreach (var session in center.Sessions)
+                sb.AppendLine($"*Name*:{center.name},{center.district_name},{center.pincode},{center.fee_type}");
+                foreach (var session in center.sessions)
                 {
-                    sb.AppendLine($"- *Date*:{session.Date}, *Available*:{session.AvailableCapacity}, *Age*: {session.MinAgeLimit}");
+                    sb.AppendLine($"- *Date*:{session.date},*Available*:{session.available_capacity},*Age*: {session.min_age_limit}");
                 }
                 sb.AppendLine(" ");
             }
